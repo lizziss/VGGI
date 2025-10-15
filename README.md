@@ -7,3 +7,10 @@ The topic of the task is **Surface Rendering**, which involves creating and disp
 ## 🔢 Variant
 **Variant №12:**  
 **Monge Surface with a Cylindrical Directrix Surface and with a Sinusoid as Meridian.**
+
+## 🌐 Deployment
+This project is deployed using **GitHub Pages**.
+
+**Live Demo:**  
+👉 [View Project Online](https://lizziss.github.io/VGGI/)
+
