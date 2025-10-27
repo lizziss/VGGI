@@ -6,6 +6,8 @@ let shProgram;
 let spaceball;
 let zoom = 80.0;
 let uMaxMultiplier = 2.5; 
+let uSteps = 100; 
+let vSteps = 20;
 
 
 function deg2rad(angle) { return angle * Math.PI / 180; }
@@ -73,8 +75,7 @@ function CreateSurfaceData() {
     let d = parseFloat(document.getElementById("dVal").value);
     let theta0 = parseFloat(document.getElementById("theta0Val").value);
 
-    let uSteps = 100;
-    let vSteps = 20;
+    
     let uMax = uMaxMultiplier * Math.PI;
     let vMin = -2*Math.PI;
     let vMax = 2*Math.PI;
@@ -121,6 +122,17 @@ function updateUmax(value) {
     updateSurface(); 
 }
 
+function updateUSteps(value) {
+    uSteps = parseInt(value);
+    document.getElementById('uSliderValue').textContent = value;
+    updateSurface();
+}
+
+function updateVSteps(value) {
+    vSteps = parseInt(value);
+    document.getElementById('vSliderValue').textContent = value;
+    updateSurface();
+}
 
 function updateSurface() {
     surface.BufferData(CreateSurfaceData(), gl.LINES);
