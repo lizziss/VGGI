@@ -8,6 +8,7 @@ let zoom = 80.0;
 let uMaxMultiplier = 2.5; 
 let uSteps = 100; 
 let vSteps = 20;
+let renderMode = "fill";
 
 
 function deg2rad(angle) { return angle * Math.PI / 180; }
@@ -16,21 +17,42 @@ function deg2rad(angle) { return angle * Math.PI / 180; }
 function Model(name) {
     this.name = name;
     this.iVertexBuffer = gl.createBuffer();
-    this.count = 0;
-    this.primitive = gl.LINES;
+    this.iIndexBuffer = gl.createBuffer(); 
+    this.iWireIndexBuffer = gl.createBuffer();
+    this.indexCount = 0;
+    this.primitive = gl.TRIANGLES;
 
-    this.BufferData = function(vertices, primitiveType) {
+    this.BufferData = function(vertices, indices, wireIndices) {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STREAM_DRAW);
-        this.count = vertices.length / 3;
-        if (primitiveType !== undefined) this.primitive = primitiveType;
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iIndexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STREAM_DRAW);
+        this.fillIndexCount = indices.length;
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iWireIndexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(wireIndices), gl.STREAM_DRAW);
+        this.wireIndexCount = wireIndices.length;
+        
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
     }
 
     this.Draw = function() {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
         gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(shProgram.iAttribVertex);
-        gl.drawArrays(this.primitive, 0, this.count);
+
+        if (renderMode === "fill") {
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iIndexBuffer);
+            gl.drawElements(gl.TRIANGLES, this.fillIndexCount, gl.UNSIGNED_SHORT, 0);
+        } else { 
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iWireIndexBuffer);
+            gl.drawElements(gl.LINES, this.wireIndexCount, gl.UNSIGNED_SHORT, 0);
+        }
+        
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
     }
 }
 
@@ -68,7 +90,9 @@ function draw() {
 
 
 function CreateSurfaceData() {
-    let vertexList = [];
+    let vertices = [];
+    let indices = [];
+    let wireIndices = [];
 
     let r = parseFloat(document.getElementById("rVal").value);
     let c = parseFloat(document.getElementById("cVal").value);
@@ -90,30 +114,34 @@ function CreateSurfaceData() {
     }
 
 
-    for (let i = 0; i < uSteps; i++) {
+    for (let i = 0; i <= uSteps; i++) {
         let u = i * uMax / uSteps;
-        for (let j = 0; j < vSteps; j++) {
+        for (let j = 0; j <= vSteps; j++) {
             let v = vMin + j * (vMax - vMin) / vSteps;
-            let vNext = vMin + (j + 1) * (vMax - vMin) / vSteps;
-            let p0 = P(u, v);
-            let p1 = P(u, vNext);
-            vertexList.push(...p0, ...p1);
+            vertices.push(...P(u, v));
         }
     }
 
 
-    for (let j = 0; j <= vSteps; j++) {
-        let v = vMin + j * (vMax - vMin) / vSteps;
-        for (let i = 0; i < uSteps; i++) {
-            let u = i * uMax / uSteps;
-            let uNext = (i + 1) * uMax / uSteps;
-            let p0 = P(u, v);
-            let p1 = P(uNext, v);
-            vertexList.push(...p0, ...p1);
+    const numVertsV = vSteps + 1;
+    for (let i = 0; i < uSteps; i++) {
+        for (let j = 0; j < vSteps; j++) {
+            let v00 = i * numVertsV + j;
+            let v01 = i * numVertsV + (j + 1);
+            let v10 = (i + 1) * numVertsV + j;
+            let v11 = (i + 1) * numVertsV + (j + 1);
+
+            indices.push(v00, v10, v01);
+            indices.push(v01, v10, v11);
+
+            wireIndices.push(v00, v10);
+            wireIndices.push(v10, v11);
+            wireIndices.push(v11, v01);
+            wireIndices.push(v01, v00);
         }
     }
 
-    return vertexList;
+    return { vertices: vertices, indices: indices, wireIndices: wireIndices };
 }
 
 function updateUmax(value) {
@@ -134,8 +162,14 @@ function updateVSteps(value) {
     updateSurface();
 }
 
+function setRenderMode(value) {
+    renderMode = value;
+    draw();
+}
+
 function updateSurface() {
-    surface.BufferData(CreateSurfaceData(), gl.LINES);
+    let data = CreateSurfaceData(); 
+    surface.BufferData(data.vertices, data.indices, data.wireIndices);
     draw();
 }
 
@@ -150,7 +184,10 @@ function initGL() {
     shProgram.iColor = gl.getUniformLocation(prog, "color");
 
     surface = new Model('Surface');
-    surface.BufferData(CreateSurfaceData(), gl.LINES);
+
+    let data = CreateSurfaceData();
+    surface.BufferData(data.vertices, data.indices,data.wireIndices);
+
     gl.enable(gl.DEPTH_TEST);
     
 }

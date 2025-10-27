@@ -142,6 +142,15 @@
             <input type="range" id="vSlider" min="3" max="100" value="20" oninput="updateVSteps(this.value)">
             <span id="vSliderValue">20</span>
         </div>
+        <div>
+            <label>Mode:</label>
+            <div style="display: inline-block; margin-left: 10px;">
+                <input type="radio" id="modeFill" name="renderMode" value="fill" checked onchange="setRenderMode(this.value)">
+                <label for="modeFill">Fill</label>
+                <input type="radio" id="modeWire" name="renderMode" value="wireframe" onchange="setRenderMode(this.value)">
+                <label for="modeWire">Wireframe</label>
+            </div>
+        </div>
         <button onclick="updateSurface()">Update Surface</button>
     </div>
     
