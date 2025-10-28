@@ -1,5 +1,6 @@
 'use strict';
 
+
 let gl;
 let surface;
 let shProgram;
@@ -9,6 +10,7 @@ let uMaxMultiplier = 2.5;
 let uSteps = 100; 
 let vSteps = 20;
 let renderMode = "fill";
+let lightSphere;
 
 
 function deg2rad(angle) { return angle * Math.PI / 180; }
@@ -17,14 +19,18 @@ function deg2rad(angle) { return angle * Math.PI / 180; }
 function Model(name) {
     this.name = name;
     this.iVertexBuffer = gl.createBuffer();
+    this.iNormalBuffer = gl.createBuffer();
     this.iIndexBuffer = gl.createBuffer(); 
     this.iWireIndexBuffer = gl.createBuffer();
     this.indexCount = 0;
     this.primitive = gl.TRIANGLES;
 
-    this.BufferData = function(vertices, indices, wireIndices) {
+    this.BufferData = function(vertices, indices, wireIndices, normals) { 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STREAM_DRAW);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.iNormalBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STREAM_DRAW);
 
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iIndexBuffer);
         gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STREAM_DRAW);
@@ -33,15 +39,16 @@ function Model(name) {
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iWireIndexBuffer);
         gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(wireIndices), gl.STREAM_DRAW);
         this.wireIndexCount = wireIndices.length;
-        
-        gl.bindBuffer(gl.ARRAY_BUFFER, null);
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
     }
 
     this.Draw = function() {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
         gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(shProgram.iAttribVertex);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.iNormalBuffer);
+        gl.vertexAttribPointer(shProgram.iAttribNormal, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(shProgram.iAttribNormal);
 
         if (renderMode === "fill") {
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iIndexBuffer);
@@ -50,9 +57,6 @@ function Model(name) {
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iWireIndexBuffer);
             gl.drawElements(gl.LINES, this.wireIndexCount, gl.UNSIGNED_SHORT, 0);
         }
-        
-        gl.bindBuffer(gl.ARRAY_BUFFER, null);
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
     }
 }
 
@@ -60,32 +64,78 @@ function Model(name) {
 function ShaderProgram(name, program) {
     this.name = name;
     this.prog = program;
+
     this.iAttribVertex = -1;
-    this.iColor = -1;
-    this.iModelViewProjectionMatrix = -1;
+    this.iAttribNormal = -1; 
+
+    this.iProjectionMatrix = -1;  
+    this.iModelViewMatrix = -1;     
+    this.iNormalMatrix = -1;        
+    this.iLightPosition = -1;    
+    this.iWireframeColor = -1;    
+    this.iRenderMode = -1;    
+
     this.Use = function() { gl.useProgram(this.prog); }
 }
 
 
 function draw() {
-    gl.clearColor(0,0,0,1);
+    requestAnimationFrame(draw);
+
+    resizeCanvasToDisplaySize(gl.canvas);
+    gl.clearColor(0.1, 0.1, 0.1, 1); 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
+   // gl.enable(gl.CULL_FACE);
 
-    let projection = m4.perspective(Math.PI/8, 1, 1, 100);
-    let modelView = spaceball.getViewMatrix();
+    let projection = m4.perspective(Math.PI / 8, gl.canvas.clientWidth / gl.canvas.clientHeight, 5, 2000);
+    gl.uniformMatrix4fv(shProgram.iProjectionMatrix, false, projection);
+    
+    let viewMatrix = spaceball.getViewMatrix();
     let rotateToVertical = m4.axisRotation([1, 0, 0], Math.PI / 2);
-    modelView = m4.multiply(rotateToVertical, modelView);
+    viewMatrix = m4.multiply(rotateToVertical, viewMatrix);
+    let rotateToPointZero = m4.axisRotation([0.707, 0.707, 0], 0.7);
+    let translateToPointZero = m4.translation(0, 0, -zoom);
+    viewMatrix = m4.multiply(rotateToPointZero, viewMatrix);
+    viewMatrix = m4.multiply(translateToPointZero, viewMatrix);
 
-    let rotateToPointZero = m4.axisRotation([0.707,0.707,0], 0.7);
-    let translateToPointZero = m4.translation(0,0,-zoom);
+    const time = performance.now() * 0.0005;
+    const lightRadius = 10.0;
+    const worldLightPos = [ 
+        
+        Math.cos(time) * lightRadius, 
+        
+        Math.sin(time) * lightRadius,
+         -10.0,
+        
+    ];
 
-    let matAccum0 = m4.multiply(rotateToPointZero, modelView);
-    let matAccum1 = m4.multiply(translateToPointZero, matAccum0);
-    let modelViewProjection = m4.multiply(projection, matAccum1);
+    const viewLightPos = m4.transformPoint(viewMatrix, worldLightPos);
+    gl.uniform3fv(shProgram.iLightPosition, viewLightPos);
+    gl.uniform4fv(shProgram.iWireframeColor, [0.4, 0.8, 1.0, 1.0]); 
 
-    gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection);
-    gl.uniform4fv(shProgram.iColor, [0.4, 0.8, 1.0, 1]);
+    
+    gl.uniform1i(shProgram.iRenderMode, renderMode === "fill" ? 0 : 1);
+    
+    gl.uniformMatrix4fv(shProgram.iModelViewMatrix, false, viewMatrix);
+    
+    let surfaceNormalMatrix = m4.transpose(m4.inverse(viewMatrix));
+    gl.uniformMatrix4fv(shProgram.iNormalMatrix, false, surfaceNormalMatrix);
+    
     surface.Draw();
+
+    
+    gl.uniform1i(shProgram.iRenderMode, 2);
+
+    let sphereModelMatrix = m4.translation(worldLightPos[0], worldLightPos[1], worldLightPos[2]);
+    
+    let sphereModelViewMatrix = m4.multiply(viewMatrix, sphereModelMatrix);
+    gl.uniformMatrix4fv(shProgram.iModelViewMatrix, false, sphereModelViewMatrix);
+
+    let sphereNormalMatrix = m4.transpose(m4.inverse(sphereModelViewMatrix));
+    gl.uniformMatrix4fv(shProgram.iNormalMatrix, false, sphereNormalMatrix);
+
+    lightSphere.Draw();
 }
 
 
@@ -93,6 +143,7 @@ function CreateSurfaceData() {
     let vertices = [];
     let indices = [];
     let wireIndices = [];
+    let normals = [];
 
     let r = parseFloat(document.getElementById("rVal").value);
     let c = parseFloat(document.getElementById("cVal").value);
@@ -141,7 +192,105 @@ function CreateSurfaceData() {
         }
     }
 
-    return { vertices: vertices, indices: indices, wireIndices: wireIndices };
+    let numVertices = vertices.length / 3;
+    let tempNormals = new Array(numVertices);
+    for (let i = 0; i < numVertices; i++) {
+        tempNormals[i] = [0, 0, 0];
+    }
+
+    const getAngle = (a, b) => {
+        const dot = m4.dot(m4.normalize(a), m4.normalize(b));
+        return Math.acos(Math.max(-1, Math.min(1, dot))); 
+    };
+
+    for (let i = 0; i < indices.length; i += 3) {
+        const i0 = indices[i];
+        const i1 = indices[i + 1];
+        const i2 = indices[i + 2];
+
+        const p0 = [vertices[i0 * 3], vertices[i0 * 3 + 1], vertices[i0 * 3 + 2]];
+        const p1 = [vertices[i1 * 3], vertices[i1 * 3 + 1], vertices[i1 * 3 + 2]];
+        const p2 = [vertices[i2 * 3], vertices[i2 * 3 + 1], vertices[i2 * 3 + 2]];
+
+        const e1 = m4.subtractVectors(p1, p0);
+        const e2 = m4.subtractVectors(p2, p0);
+        const facetNormal = m4.normalize(m4.cross(e1, e2));
+
+        const e3 = m4.subtractVectors(p0, p1);
+        const e4 = m4.subtractVectors(p2, p1);
+        const e5 = m4.subtractVectors(p0, p2);
+        const e6 = m4.subtractVectors(p1, p2);
+
+        const angle0 = getAngle(e1, e2);
+        const angle1 = getAngle(e3, e4);
+        const angle2 = getAngle(e5, e6);
+
+        tempNormals[i0] = m4.addVectors(tempNormals[i0], m4.scaleVector(facetNormal, angle0));
+        tempNormals[i1] = m4.addVectors(tempNormals[i1], m4.scaleVector(facetNormal, angle1));
+        tempNormals[i2] = m4.addVectors(tempNormals[i2], m4.scaleVector(facetNormal, angle2));
+    }
+
+    for (let i = 0; i < numVertices; i++) {
+        normals.push(...m4.normalize(tempNormals[i]));
+    }
+    
+    return { 
+        vertices: vertices, 
+        indices: indices, 
+        wireIndices: wireIndices, 
+        normals: normals 
+    };
+}
+
+function CreateSphereData(radius, latBands, longBands) {
+    let vertices = [];
+    let indices = [];
+    let normals = [];
+
+    for (let lat = 0; lat <= latBands; lat++) {
+        let theta = lat * Math.PI / latBands;
+        let sinTheta = Math.sin(theta);
+        let cosTheta = Math.cos(theta);
+
+        for (let long = 0; long <= longBands; long++) {
+            let phi = long * 2 * Math.PI / longBands;
+            let sinPhi = Math.sin(phi);
+            let cosPhi = Math.cos(phi);
+
+            let x = cosPhi * sinTheta;
+            let y = cosTheta;
+            let z = sinPhi * sinTheta;
+
+            let u = 1 - (long / longBands);
+            let v = 1 - (lat / latBands);
+
+            normals.push(x, y, z);
+            
+            vertices.push(radius * x, radius * y, radius * z);
+        }
+    }
+
+    for (let lat = 0; lat < latBands; lat++) {
+        for (let long = 0; long < longBands; long++) {
+            let first = (lat * (longBands + 1)) + long;
+            let second = first + longBands + 1;
+
+            indices.push(first);
+            indices.push(second);
+            indices.push(first + 1);
+
+            indices.push(second);
+            indices.push(second + 1);
+            indices.push(first + 1);
+        }
+    }
+
+    return { 
+        vertices: vertices, 
+        indices: indices, 
+        normals: normals,
+        wireIndices: indices 
+    };
 }
 
 function updateUmax(value) {
@@ -169,8 +318,8 @@ function setRenderMode(value) {
 
 function updateSurface() {
     let data = CreateSurfaceData(); 
-    surface.BufferData(data.vertices, data.indices, data.wireIndices);
-    draw();
+    surface.BufferData(data.vertices, data.indices, data.wireIndices, data.normals);
+    
 }
 
 
@@ -179,16 +328,25 @@ function initGL() {
     shProgram = new ShaderProgram('Basic', prog);
     shProgram.Use();
 
-    shProgram.iAttribVertex = gl.getAttribLocation(prog, "vertex");
-    shProgram.iModelViewProjectionMatrix = gl.getUniformLocation(prog, "ModelViewProjectionMatrix");
-    shProgram.iColor = gl.getUniformLocation(prog, "color");
+    shProgram.iAttribVertex = gl.getAttribLocation(prog, "a_position");
+    shProgram.iAttribNormal = gl.getAttribLocation(prog, "a_normal");
+
+    shProgram.iProjectionMatrix = gl.getUniformLocation(prog, "u_projectionMatrix");
+    shProgram.iModelViewMatrix = gl.getUniformLocation(prog, "u_modelViewMatrix");
+    shProgram.iNormalMatrix = gl.getUniformLocation(prog, "u_normalMatrix");
+    shProgram.iLightPosition = gl.getUniformLocation(prog, "u_lightPosition");
+    shProgram.iWireframeColor = gl.getUniformLocation(prog, "u_wireframeColor");
+    shProgram.iRenderMode = gl.getUniformLocation(prog, "u_renderMode"); 
 
     surface = new Model('Surface');
+    let surfaceData = CreateSurfaceData();
+    surface.BufferData(surfaceData.vertices, surfaceData.indices, surfaceData.wireIndices, surfaceData.normals);
+    
 
-    let data = CreateSurfaceData();
-    surface.BufferData(data.vertices, data.indices,data.wireIndices);
-
-    gl.enable(gl.DEPTH_TEST);
+    lightSphere = new Model('LightSphere');
+    
+    let sphereData = CreateSphereData(0.25, 20, 20); 
+    lightSphere.BufferData(sphereData.vertices, sphereData.indices, sphereData.wireIndices, sphereData.normals);
     
 }
 
@@ -240,16 +398,16 @@ function init() {
     initGL();
 
 
-    spaceball = new TrackballRotator(canvas, draw, 0);
+    spaceball = new TrackballRotator(canvas, () => {}, 0); 
 
-   
     canvas.addEventListener("wheel", (event) => {
         zoom += event.deltaY * 0.02;
         if (zoom < 4) zoom = 4;
         if (zoom > 80) zoom = 80;
-        draw();
         event.preventDefault();
     });
-    resizeCanvasToDisplaySize(canvas);
-    draw();
+    
+    window.addEventListener('resize', () => {});
+
+    requestAnimationFrame(draw);
 }
