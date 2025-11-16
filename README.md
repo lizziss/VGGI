@@ -6,7 +6,7 @@ This project builds upon the foundation of PA#1 and PA#2, introducing render the
 
 ## 🔢 Variant
 **Variant №12:**  
-**	Prioritize normal**
+**Prioritize normal**
 
 ## 🌐 Deployment
 This project is deployed using **GitHub Pages**.
