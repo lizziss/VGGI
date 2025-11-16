@@ -1,35 +1,47 @@
-
-
 // Vertex shader
 const vertexShaderSource = `
 attribute vec3 a_position;
 attribute vec3 a_normal;
+attribute vec2 a_texcoord;
+attribute vec3 a_tangent;
+attribute vec3 a_bitangent;
 
 uniform mat4 u_projectionMatrix;
 uniform mat4 u_modelViewMatrix;
 uniform mat4 u_normalMatrix;
 uniform vec3 u_lightPosition;
 uniform vec4 u_wireframeColor;
-uniform int u_renderMode; // 0 = fill, 1 = wireframe, 2 = emissive
+uniform int u_renderMode; 
 
 varying vec3 v_color;
+varying vec2 v_texcoord;
+varying mat3 v_TBN;
+varying vec3 v_fragPos; // позиція у view space
 
 void main() {
     vec4 viewPos4 = u_modelViewMatrix * vec4(a_position, 1.0);
-    vec3 viewPos = viewPos4.xyz;
-    
+    v_fragPos = viewPos4.xyz;
+
     gl_Position = u_projectionMatrix * viewPos4;
+    v_texcoord = a_texcoord;
+
+    
+    mat3 normalMat = mat3(u_normalMatrix);
+
+    vec3 T = normalize(normalMat * a_tangent);
+    vec3 B = normalize(normalMat * a_bitangent);
+    vec3 N = normalize(normalMat * a_normal);
+
+    v_TBN = mat3(T, B, N);
+
     
     if (u_renderMode == 1) {
         v_color = u_wireframeColor.rgb;
-        
     } else if (u_renderMode == 2) {
-        v_color = vec3(1.0, 1.0, 0.8); 
-        
-    } else { 
-        vec3 N = normalize(mat3(u_normalMatrix) * a_normal);
-        vec3 L = normalize(u_lightPosition - viewPos);
-        vec3 V = normalize(-viewPos);
+        v_color = vec3(1.0, 1.0, 0.8);
+    } else {
+        vec3 L = normalize(u_lightPosition - viewPos4.xyz);
+        vec3 V = normalize(-viewPos4.xyz);
         vec3 R = reflect(-L, N);
 
         vec3 ambientColor = vec3(0.1, 0.1, 0.2);
@@ -43,14 +55,63 @@ void main() {
 
         v_color = ambient + diffuse + specular;
     }
-}`;
-
+}
+`;
 // Fragment shader
 const fragmentShaderSource = `
 precision mediump float;
 
 varying vec3 v_color;
+varying vec2 v_texcoord;
+varying mat3 v_TBN;
+varying vec3 v_fragPos;
+
+uniform sampler2D u_diffuseTex;
+uniform sampler2D u_specularTex;
+uniform sampler2D u_normalTex;
+uniform highp vec3 u_lightPosition;
+
+uniform bool u_useDiffuse;
+uniform bool u_useSpecular;
+uniform bool u_useNormal;
 
 void main() {
-    gl_FragColor = vec4(v_color, 1.0);
-}`;
+    vec3 diffColor;
+    vec3 specColor;
+    vec3 normalMap;
+
+    // diffuse
+    if (u_useDiffuse) {
+        diffColor = texture2D(u_diffuseTex, v_texcoord).rgb;
+    } else {
+        diffColor = vec3(1.0); 
+    }
+
+    // specular
+    if (u_useSpecular) {
+        specColor = texture2D(u_specularTex, v_texcoord).rgb;
+    } else {
+        specColor = vec3(1.0); 
+    }
+
+    // normal
+    if (u_useNormal) {
+        normalMap = texture2D(u_normalTex, v_texcoord).rgb;
+        normalMap = normalMap * 2.0 - 1.0;
+    } else {
+        normalMap = vec3(0.0, 0.0, 1.0); 
+    }
+
+    vec3 N = normalize(v_TBN * normalMap);
+
+    vec3 L = normalize(u_lightPosition - v_fragPos);
+    vec3 V = normalize(-v_fragPos);
+    vec3 R = reflect(-L, N);
+
+    vec3 ambient = 0.1 * diffColor;
+    vec3 diffuse = diffColor * max(dot(N, L), 0.0);
+    vec3 specular = specColor * pow(max(dot(R, V), 0.0), 32.0);
+
+    gl_FragColor = vec4(ambient + diffuse + specular, 1.0);
+}
+`;

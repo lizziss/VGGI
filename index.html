@@ -89,12 +89,21 @@
         display: block;
         background-color: #000;
     }
+    #controls > div > label {
+    display: inline-block;
+    width: 90px;
+    font-weight: 500;
+}
+
+.texture-group label {
+    width: auto; /* не обмежуємо ширину */
+}
+
+
+ 
 </style>
 
-<script src="./Utils/trackball-rotator.js"></script>
-<script src="./Utils/m4.js"></script>
-<script src="./shader.gpu"></script>
-<script src="./main.js"></script>
+
 
 </head>
 <body onload="init()">
@@ -151,9 +160,34 @@
                 <label for="modeWire">Wireframe</label>
             </div>
         </div>
+        <div>
+    <label >Texture:</label>
+    <div class="texture-group">
+        
+        <label>
+            <input type="checkbox" id="useDiffuseMap" checked onchange="updateRenderSettings()">
+            Use Diffuse Map
+        </label>
+
+        <label>
+            <input type="checkbox" id="useSpecularMap" checked onchange="updateRenderSettings()">
+            Use Specular Map
+        </label>
+
+        <label>
+            <input type="checkbox" id="useNormalMap" checked onchange="updateRenderSettings()">
+            Use Normal Map
+        </label>
+    </div>
+</div>
+
         <button onclick="updateSurface()">Update Surface</button>
     </div>
-    
-</div>
+
+
+<script src="./Utils/trackball-rotator.js"></script>
+<script src="./Utils/m4.js"></script>
+<script src="./shader.gpu"></script>
+<script src="./main.js"></script>
 </body>
 </html>

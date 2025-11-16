@@ -12,25 +12,52 @@ let vSteps = 20;
 let renderMode = "fill";
 let lightSphere;
 
+let diffuseTexture = null;
+let specularTexture = null;
+let normalTexture = null;
+
+let useDiffuseMap = true;
+let useSpecularMap = true;
+let useNormalMap = true;
 
 function deg2rad(angle) { return angle * Math.PI / 180; }
-
 
 function Model(name) {
     this.name = name;
     this.iVertexBuffer = gl.createBuffer();
     this.iNormalBuffer = gl.createBuffer();
-    this.iIndexBuffer = gl.createBuffer(); 
+    this.iIndexBuffer = gl.createBuffer();
     this.iWireIndexBuffer = gl.createBuffer();
+
+    // new buffers
+    this.iTexCoordBuffer = gl.createBuffer();
+    this.iTangentBuffer = gl.createBuffer();
+    this.iBitangentBuffer = gl.createBuffer();
+
     this.indexCount = 0;
     this.primitive = gl.TRIANGLES;
 
-    this.BufferData = function(vertices, indices, wireIndices, normals) { 
+    this.BufferData = function(vertices, indices, wireIndices, normals, texcoords, tangents, bitangents) {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STREAM_DRAW);
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iNormalBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STREAM_DRAW);
+
+        if (texcoords && texcoords.length > 0) {
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.iTexCoordBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texcoords), gl.STATIC_DRAW);
+        }
+
+        if (tangents && tangents.length > 0) {
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.iTangentBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(tangents), gl.STATIC_DRAW);
+        }
+
+        if (bitangents && bitangents.length > 0) {
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.iBitangentBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(bitangents), gl.STATIC_DRAW);
+        }
 
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iIndexBuffer);
         gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STREAM_DRAW);
@@ -43,22 +70,51 @@ function Model(name) {
 
     this.Draw = function() {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
-        gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
-        gl.enableVertexAttribArray(shProgram.iAttribVertex);
+        if (shProgram.iAttribVertex !== -1) {
+            gl.enableVertexAttribArray(shProgram.iAttribVertex);
+            gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
+        }
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iNormalBuffer);
-        gl.vertexAttribPointer(shProgram.iAttribNormal, 3, gl.FLOAT, false, 0, 0);
-        gl.enableVertexAttribArray(shProgram.iAttribNormal);
+        if (shProgram.iAttribNormal !== -1) {
+            gl.enableVertexAttribArray(shProgram.iAttribNormal);
+            gl.vertexAttribPointer(shProgram.iAttribNormal, 3, gl.FLOAT, false, 0, 0);
+        }
+
+        if (this.iTexCoordBuffer && shProgram.iAttribTexCoord !== undefined && shProgram.iAttribTexCoord !== -1) {
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.iTexCoordBuffer);
+            gl.enableVertexAttribArray(shProgram.iAttribTexCoord);
+            gl.vertexAttribPointer(shProgram.iAttribTexCoord, 2, gl.FLOAT, false, 0, 0);
+        }
+
+        if (this.iTangentBuffer && shProgram.iAttribTangent !== undefined && shProgram.iAttribTangent !== -1) {
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.iTangentBuffer);
+            gl.enableVertexAttribArray(shProgram.iAttribTangent);
+            gl.vertexAttribPointer(shProgram.iAttribTangent, 3, gl.FLOAT, false, 0, 0);
+        }
+
+        if (this.iBitangentBuffer && shProgram.iAttribBitangent !== undefined && shProgram.iAttribBitangent !== -1) {
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.iBitangentBuffer);
+            gl.enableVertexAttribArray(shProgram.iAttribBitangent);
+            gl.vertexAttribPointer(shProgram.iAttribBitangent, 3, gl.FLOAT, false, 0, 0);
+        }
 
         if (renderMode === "fill") {
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iIndexBuffer);
             gl.drawElements(gl.TRIANGLES, this.fillIndexCount, gl.UNSIGNED_SHORT, 0);
-        } else { 
+        } else {
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iWireIndexBuffer);
             gl.drawElements(gl.LINES, this.wireIndexCount, gl.UNSIGNED_SHORT, 0);
         }
+
+        if (shProgram.iAttribVertex !== -1) gl.disableVertexAttribArray(shProgram.iAttribVertex);
+        if (shProgram.iAttribNormal !== -1) gl.disableVertexAttribArray(shProgram.iAttribNormal);
+        if (shProgram.iAttribTexCoord !== -1) gl.disableVertexAttribArray(shProgram.iAttribTexCoord);
+        if (shProgram.iAttribTangent !== -1) gl.disableVertexAttribArray(shProgram.iAttribTangent);
+        if (shProgram.iAttribBitangent !== -1) gl.disableVertexAttribArray(shProgram.iAttribBitangent);
     }
 }
+
 
 
 function ShaderProgram(name, program) {
@@ -121,6 +177,32 @@ function draw() {
     
     let surfaceNormalMatrix = m4.transpose(m4.inverse(viewMatrix));
     gl.uniformMatrix4fv(shProgram.iNormalMatrix, false, surfaceNormalMatrix);
+
+    gl.activeTexture(gl.TEXTURE0);
+    if (useDiffuseMap && shProgram.diffuseTexture) {
+        gl.bindTexture(gl.TEXTURE_2D, shProgram.diffuseTexture);
+    } else {
+        gl.bindTexture(gl.TEXTURE_2D, shProgram.whiteTexture);
+    }
+    gl.uniform1i(shProgram.uDiffuseTex, 0);
+
+    gl.activeTexture(gl.TEXTURE1);
+    if (useSpecularMap && shProgram.specularTexture) {
+        gl.bindTexture(gl.TEXTURE_2D, shProgram.specularTexture);
+    } else {
+        gl.bindTexture(gl.TEXTURE_2D, shProgram.whiteTexture);
+    }
+    gl.uniform1i(shProgram.uSpecularTex, 1);
+
+    gl.activeTexture(gl.TEXTURE2);
+    if (useNormalMap && shProgram.normalTexture) {
+        gl.bindTexture(gl.TEXTURE_2D, shProgram.normalTexture);
+    } else {
+        gl.bindTexture(gl.TEXTURE_2D, shProgram.neutralNormalTexture);
+    }
+
+    gl.uniform1i(shProgram.uNormalTex, 2);
+
     
     surface.Draw();
 
@@ -140,39 +222,45 @@ function draw() {
 
 
 function CreateSurfaceData() {
-    let vertices = [];
+    let positions = [];
     let indices = [];
     let wireIndices = [];
     let normals = [];
+    let texcoords = [];
+    let tangents = [];
+    let bitangents = [];
 
     let r = parseFloat(document.getElementById("rVal").value);
     let c = parseFloat(document.getElementById("cVal").value);
     let d = parseFloat(document.getElementById("dVal").value);
     let theta0 = parseFloat(document.getElementById("theta0Val").value);
 
-    
     let uMax = uMaxMultiplier * Math.PI;
     let vMin = -2*Math.PI;
     let vMax = 2*Math.PI;
 
-    function P(u, v) {
+    function P(u,v){
         let x = r * Math.cos(u) -
                 (r * (theta0 - u) + v * Math.cos(theta0) - c * Math.sin(d * v) * Math.sin(theta0)) * Math.sin(u);
         let y = r * Math.sin(u) +
                 (r * (theta0 - u) + v * Math.cos(theta0) - c * Math.sin(d * v) * Math.sin(theta0)) * Math.cos(u);
         let z = v * Math.sin(theta0) + c * Math.sin(d * v) * Math.cos(theta0);
-        return [x, y, z];
+        return [x,y,z];
     }
 
-
-    for (let i = 0; i <= uSteps; i++) {
+    let grid = [];
+    for (let i=0;i<=uSteps;i++){
         let u = i * uMax / uSteps;
-        for (let j = 0; j <= vSteps; j++) {
+        let row = [];
+        for (let j=0;j<=vSteps;j++){
             let v = vMin + j * (vMax - vMin) / vSteps;
-            vertices.push(...P(u, v));
+            let p = P(u,v);
+            row.push({p: p, u: u, v: v, ui: i, vj: j});
+            positions.push(...p);
+            texcoords.push(i / uSteps, j / vSteps);
         }
+        grid.push(row);
     }
-
 
     const numVertsV = vSteps + 1;
     for (let i = 0; i < uSteps; i++) {
@@ -185,62 +273,65 @@ function CreateSurfaceData() {
             indices.push(v00, v10, v01);
             indices.push(v01, v10, v11);
 
-            wireIndices.push(v00, v10);
-            wireIndices.push(v10, v11);
-            wireIndices.push(v11, v01);
-            wireIndices.push(v01, v00);
+            wireIndices.push(v00, v10, v10, v11, v11, v01, v01, v00);
         }
     }
 
-    let numVertices = vertices.length / 3;
+    let numVertices = positions.length/3;
     let tempNormals = new Array(numVertices);
-    for (let i = 0; i < numVertices; i++) {
-        tempNormals[i] = [0, 0, 0];
-    }
+    for (let i=0;i<numVertices;i++) tempNormals[i] = [0,0,0];
 
     const getAngle = (a, b) => {
         const dot = m4.dot(m4.normalize(a), m4.normalize(b));
-        return Math.acos(Math.max(-1, Math.min(1, dot))); 
+        return Math.acos(Math.max(-1, Math.min(1, dot)));
     };
 
-    for (let i = 0; i < indices.length; i += 3) {
-        const i0 = indices[i];
-        const i1 = indices[i + 1];
-        const i2 = indices[i + 2];
-
-        const p0 = [vertices[i0 * 3], vertices[i0 * 3 + 1], vertices[i0 * 3 + 2]];
-        const p1 = [vertices[i1 * 3], vertices[i1 * 3 + 1], vertices[i1 * 3 + 2]];
-        const p2 = [vertices[i2 * 3], vertices[i2 * 3 + 1], vertices[i2 * 3 + 2]];
-
-        const e1 = m4.subtractVectors(p1, p0);
-        const e2 = m4.subtractVectors(p2, p0);
-        const facetNormal = m4.normalize(m4.cross(e1, e2));
-
-        const e3 = m4.subtractVectors(p0, p1);
-        const e4 = m4.subtractVectors(p2, p1);
-        const e5 = m4.subtractVectors(p0, p2);
-        const e6 = m4.subtractVectors(p1, p2);
-
-        const angle0 = getAngle(e1, e2);
-        const angle1 = getAngle(e3, e4);
-        const angle2 = getAngle(e5, e6);
-
+    for (let i=0;i<indices.length;i+=3){
+        const i0 = indices[i], i1 = indices[i+1], i2 = indices[i+2];
+        const p0 = [positions[i0*3], positions[i0*3+1], positions[i0*3+2]];
+        const p1 = [positions[i1*3], positions[i1*3+1], positions[i1*3+2]];
+        const p2 = [positions[i2*3], positions[i2*3+1], positions[i2*3+2]];
+        const e1 = m4.subtractVectors(p1,p0);
+        const e2 = m4.subtractVectors(p2,p0);
+        const facetNormal = m4.normalize(m4.cross(e1,e2));
+        const e3 = m4.subtractVectors(p0,p1);
+        const e4 = m4.subtractVectors(p2,p1);
+        const e5 = m4.subtractVectors(p0,p2);
+        const e6 = m4.subtractVectors(p1,p2);
+        const angle0 = getAngle(e1,e2);
+        const angle1 = getAngle(e3,e4);
+        const angle2 = getAngle(e5,e6);
         tempNormals[i0] = m4.addVectors(tempNormals[i0], m4.scaleVector(facetNormal, angle0));
         tempNormals[i1] = m4.addVectors(tempNormals[i1], m4.scaleVector(facetNormal, angle1));
         tempNormals[i2] = m4.addVectors(tempNormals[i2], m4.scaleVector(facetNormal, angle2));
     }
-
-    for (let i = 0; i < numVertices; i++) {
+    for (let i=0;i<numVertices;i++){
         normals.push(...m4.normalize(tempNormals[i]));
     }
-    
-    return { 
-        vertices: vertices, 
-        indices: indices, 
-        wireIndices: wireIndices, 
-        normals: normals 
+
+    for (let i=0;i<=uSteps;i++){
+        for (let j=0;j<=vSteps;j++){
+            let p = grid[i][j].p;
+            let pu = (i < uSteps) ? grid[i+1][j].p : grid[i-1][j].p;
+            let pv = (j < vSteps) ? grid[i][j+1].p : grid[i][j-1].p;
+            let T = m4.normalize(m4.subtractVectors(pu, p));
+            let B = m4.normalize(m4.subtractVectors(pv, p));
+            tangents.push(...T);
+            bitangents.push(...B);
+        }
+    }
+
+    return {
+        vertices: positions,
+        indices: indices,
+        wireIndices: wireIndices,
+        normals: normals,
+        texcoords: texcoords,
+        tangents: tangents,
+        bitangents: bitangents
     };
 }
+
 
 function CreateSphereData(radius, latBands, longBands) {
     let vertices = [];
@@ -330,7 +421,34 @@ function initGL() {
 
     shProgram.iAttribVertex = gl.getAttribLocation(prog, "a_position");
     shProgram.iAttribNormal = gl.getAttribLocation(prog, "a_normal");
+    
+    shProgram.iAttribTexCoord  = gl.getAttribLocation(prog, "a_texcoord");
 
+    shProgram.iAttribTangent   = gl.getAttribLocation(prog, "a_tangent");
+    shProgram.iAttribBitangent = gl.getAttribLocation(prog, "a_bitangent");
+
+    shProgram.uDiffuseTex  = gl.getUniformLocation(prog, "u_diffuseTex");
+    shProgram.uSpecularTex = gl.getUniformLocation(prog, "u_specularTex");
+    shProgram.uNormalTex   = gl.getUniformLocation(prog, "u_normalTex");
+
+    shProgram.uUseDiffuse = gl.getUniformLocation(prog, "u_useDiffuse");
+    shProgram.uUseSpecular = gl.getUniformLocation(prog, "u_useSpecular");
+    shProgram.uUseNormal   = gl.getUniformLocation(prog, "u_useNormal");
+
+    const createSolidTexture = (r, g, b, a = 255) => {
+        const tex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        const data = new Uint8Array([r, g, b, a]);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1,1,0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        return tex;
+    };
+
+    shProgram.whiteTexture = createSolidTexture(255,255,255,255); 
+    shProgram.neutralNormalTexture = createSolidTexture(128,128,255,255);
     shProgram.iProjectionMatrix = gl.getUniformLocation(prog, "u_projectionMatrix");
     shProgram.iModelViewMatrix = gl.getUniformLocation(prog, "u_modelViewMatrix");
     shProgram.iNormalMatrix = gl.getUniformLocation(prog, "u_normalMatrix");
@@ -338,9 +456,27 @@ function initGL() {
     shProgram.iWireframeColor = gl.getUniformLocation(prog, "u_wireframeColor");
     shProgram.iRenderMode = gl.getUniformLocation(prog, "u_renderMode"); 
 
+    shProgram.diffuseTexture = LoadTexture(gl, "./texture/Alien_Muscle_001_DIFFUSE.jpg");
+    shProgram.specularTexture = LoadTexture(gl, "./texture/Alien_Muscle_001_SPEC.jpg");
+    shProgram.normalTexture   = LoadTexture(gl, "./texture/Alien_Muscle_001_NORM.jpg");
+
+
+    gl.uniform1i(shProgram.uUseDiffuse, 1);
+    gl.uniform1i(shProgram.uUseSpecular, 1);
+    gl.uniform1i(shProgram.uUseNormal, 1);
+
     surface = new Model('Surface');
-    let surfaceData = CreateSurfaceData();
-    surface.BufferData(surfaceData.vertices, surfaceData.indices, surfaceData.wireIndices, surfaceData.normals);
+   let surfaceData = CreateSurfaceData();
+    surface.BufferData(
+    surfaceData.vertices,
+    surfaceData.indices,
+    surfaceData.wireIndices,
+    surfaceData.normals,
+    surfaceData.texcoords,
+    surfaceData.tangents,
+    surfaceData.bitangents
+    );
+
     
 
     lightSphere = new Model('LightSphere');
@@ -349,6 +485,20 @@ function initGL() {
     lightSphere.BufferData(sphereData.vertices, sphereData.indices, sphereData.wireIndices, sphereData.normals);
     
 }
+
+function updateRenderSettings() {
+    useDiffuseMap = document.getElementById("useDiffuseMap").checked;
+    useSpecularMap = document.getElementById("useSpecularMap").checked;
+    useNormalMap   = document.getElementById("useNormalMap").checked;
+
+    gl.useProgram(shProgram.prog);
+    gl.uniform1i(shProgram.uUseDiffuse, useDiffuseMap ? 1 : 0);
+    gl.uniform1i(shProgram.uUseSpecular, useSpecularMap ? 1 : 0);
+    gl.uniform1i(shProgram.uUseNormal, useNormalMap ? 1 : 0);
+
+    draw();
+}
+
 
 function resizeCanvasToDisplaySize(canvas) {
     const displayWidth  = canvas.clientWidth * window.devicePixelRatio;
@@ -411,3 +561,32 @@ function init() {
 
     requestAnimationFrame(draw);
 }
+
+function LoadTexture(gl, url) {
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+
+    gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        1,
+        1,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        new Uint8Array([255, 255, 255, 255])
+    );
+
+    const image = new Image();
+    image.onload = function () {
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+
+        gl.generateMipmap(gl.TEXTURE_2D);
+    };
+    image.src = url;
+
+    return texture;
+}
+
