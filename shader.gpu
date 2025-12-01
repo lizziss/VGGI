@@ -11,52 +11,97 @@ uniform mat4 u_modelViewMatrix;
 uniform mat4 u_normalMatrix;
 uniform vec3 u_lightPosition;
 uniform vec4 u_wireframeColor;
-uniform int u_renderMode; 
+uniform mediump int u_renderMode; 
+
+uniform vec3 u_meshAngles; 
+uniform vec2 u_meshCenterPoint;
+
+uniform float u_texRotationAngle;
+uniform vec2 u_texCenterPoint;
 
 varying vec3 v_color;
 varying vec2 v_texcoord;
 varying mat3 v_TBN;
-varying vec3 v_fragPos; // позиція у view space
+varying vec3 v_fragPos;
+
+mat3 rotX(float angle) {
+    float s = sin(angle);
+    float c = cos(angle);
+    return mat3(
+        1.0, 0.0, 0.0,
+        0.0, c,  -s,
+        0.0, s,   c
+    );
+}
+
+mat3 rotY(float angle) {
+    float s = sin(angle);
+    float c = cos(angle);
+    return mat3(
+        c,   0.0, s,
+        0.0, 1.0, 0.0,
+        -s,  0.0, c
+    );
+}
+
+mat3 rotZ(float angle) {
+    float s = sin(angle);
+    float c = cos(angle);
+    return mat3(
+        c,  -s,  0.0,
+        s,   c,  0.0,
+        0.0, 0.0, 1.0
+    );
+}
+
+vec2 rotate2D(vec2 v, float angle) {
+    float s = sin(angle);
+    float c = cos(angle);
+    return vec2(v.x * c - v.y * s, v.x * s + v.y * c);
+}
 
 void main() {
-    vec4 viewPos4 = u_modelViewMatrix * vec4(a_position, 1.0);
-    v_fragPos = viewPos4.xyz;
+    vec3 pos = a_position;
+    vec3 norm = a_normal;
+    vec3 tang = a_tangent;
+    vec3 bitang = a_bitangent;
 
-    gl_Position = u_projectionMatrix * viewPos4;
-    v_texcoord = a_texcoord;
+    mat3 meshRotMat = rotZ(u_meshAngles.z) * rotY(u_meshAngles.y) * rotX(u_meshAngles.x);
 
+    pos.xy -= u_meshCenterPoint;
     
+    pos = meshRotMat * pos;
+    
+    pos.xy += u_meshCenterPoint;
+
+    norm = meshRotMat * norm;
+    tang = meshRotMat * tang;
+    bitang = meshRotMat * bitang;
+
+    vec4 viewPos4 = u_modelViewMatrix * vec4(pos, 1.0);
+    v_fragPos = viewPos4.xyz;
+    gl_Position = u_projectionMatrix * viewPos4;
+
+    vec2 tex = a_texcoord;
+    tex -= u_texCenterPoint;
+    tex = rotate2D(tex, u_texRotationAngle);
+    tex += u_texCenterPoint;
+    v_texcoord = tex;
+
     mat3 normalMat = mat3(u_normalMatrix);
-
-    vec3 T = normalize(normalMat * a_tangent);
-    vec3 B = normalize(normalMat * a_bitangent);
-    vec3 N = normalize(normalMat * a_normal);
-
+    vec3 T = normalize(normalMat * tang);
+    vec3 B = normalize(normalMat * bitang);
+    vec3 N = normalize(normalMat * norm);
     v_TBN = mat3(T, B, N);
 
-    
-    if (u_renderMode == 1) {
+    if (u_renderMode == 1 || u_renderMode == 2) {
         v_color = u_wireframeColor.rgb;
-    } else if (u_renderMode == 2) {
-        v_color = vec3(1.0, 1.0, 0.8);
     } else {
-        vec3 L = normalize(u_lightPosition - viewPos4.xyz);
-        vec3 V = normalize(-viewPos4.xyz);
-        vec3 R = reflect(-L, N);
-
-        vec3 ambientColor = vec3(0.1, 0.1, 0.2);
-        vec3 lightColor = vec3(1.0, 1.0, 1.0);
-        vec3 surfaceColor = vec3(0.4, 0.8, 1.0);
-        float shininess = 32.0;
-
-        vec3 ambient = ambientColor * surfaceColor;
-        vec3 diffuse = lightColor * surfaceColor * max(dot(N, L), 0.0);
-        vec3 specular = lightColor * pow(max(dot(V, R), 0.0), shininess);
-
-        v_color = ambient + diffuse + specular;
+        v_color = vec3(0.0);
     }
 }
 `;
+
 // Fragment shader
 const fragmentShaderSource = `
 precision mediump float;
@@ -74,36 +119,19 @@ uniform highp vec3 u_lightPosition;
 uniform bool u_useDiffuse;
 uniform bool u_useSpecular;
 uniform bool u_useNormal;
+uniform mediump int u_renderMode;
 
 void main() {
-    vec3 diffColor;
-    vec3 specColor;
-    vec3 normalMap;
-
-    // diffuse
-    if (u_useDiffuse) {
-        diffColor = texture2D(u_diffuseTex, v_texcoord).rgb;
-    } else {
-        diffColor = vec3(1.0); 
+    if (u_renderMode == 2 || u_renderMode == 1) {
+        gl_FragColor = vec4(v_color, 1.0);
+        return; 
     }
 
-    // specular
-    if (u_useSpecular) {
-        specColor = texture2D(u_specularTex, v_texcoord).rgb;
-    } else {
-        specColor = vec3(1.0); 
-    }
-
-    // normal
-    if (u_useNormal) {
-        normalMap = texture2D(u_normalTex, v_texcoord).rgb;
-        normalMap = normalMap * 2.0 - 1.0;
-    } else {
-        normalMap = vec3(0.0, 0.0, 1.0); 
-    }
+    vec3 diffColor = u_useDiffuse ? texture2D(u_diffuseTex, v_texcoord).rgb : vec3(1.0);
+    vec3 specColor = u_useSpecular ? texture2D(u_specularTex, v_texcoord).rgb : vec3(1.0);
+    vec3 normalMap = u_useNormal ? texture2D(u_normalTex, v_texcoord).rgb * 2.0 - 1.0 : vec3(0.0, 0.0, 1.0);
 
     vec3 N = normalize(v_TBN * normalMap);
-
     vec3 L = normalize(u_lightPosition - v_fragPos);
     vec3 V = normalize(-v_fragPos);
     vec3 R = reflect(-L, N);

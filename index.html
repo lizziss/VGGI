@@ -1,66 +1,81 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Monge Surface Visualization</title>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Monge Surface Visualization</title>
 
-<style>
-    
-    html, body {
+    <style>
+      html,
+      body {
         margin: 0;
         padding: 0;
         height: 100%;
-        overflow: hidden;
         font-family: "Segoe UI", Arial, sans-serif;
         background: linear-gradient(135deg, #e3f2fd, #bbdefb);
         color: #333;
-    }
+      }
 
-    
-    #container {
+      #container {
         display: flex;
-        height: 100vh;
+        height: 100vh; /* вся висота екрану */
         width: 100vw;
-    }
+      }
 
-    
-    #controls {
+      #canvas-holder {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #000;
+      }
+
+      canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      #controls {
         width: 300px;
+        max-height: 100vh; /* обмежуємо висоту панелі висотою вікна */
+        overflow-y: auto; /* вертикальна прокрутка при переповненні */
         background: rgba(255, 255, 255, 0.95);
         padding: 20px;
         box-shadow: 4px 0 10px rgba(0, 0, 0, 0.2);
         display: flex;
         flex-direction: column;
-        justify-content: flex-start;
         gap: 10px;
-        z-index: 10;
-    }
+      }
 
-    h2 {
+      h2 {
         text-align: center;
         margin-top: 0;
         color: #1565c0;
         font-weight: 600;
-    }
+      }
 
-    label {
+      label {
         display: inline-block;
         width: 90px;
         font-weight: 500;
-    }
+      }
 
-    input[type="number"], input[type="range"] {
-        width: 100px;
+      input[type="number"],
+      input[type="range"] {
         padding: 5px;
         border: 1px solid #ccc;
         border-radius: 4px;
-    }
+      }
 
-    input[type="range"] {
+      input[type="number"] {
+        width: 100px;
+      }
+
+      input[type="range"] {
         width: 160px;
-    }
+      }
 
-    button {
+      button {
         background-color: #1565c0;
         color: white;
         border: none;
@@ -69,125 +84,202 @@
         cursor: pointer;
         transition: background 0.3s;
         margin-top: 10px;
-    }
+      }
 
-    button:hover {
+      button:hover {
         background-color: #0d47a1;
-    }
+      }
 
- 
-    #canvas-holder {
-        flex: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    canvas {
-        width: 100%;
-        height: 100%;
-        display: block;
-        background-color: #000;
-    }
-    #controls > div > label {
-    display: inline-block;
-    width: 90px;
-    font-weight: 500;
-}
-
-.texture-group label {
-    width: auto; /* не обмежуємо ширину */
-}
-
-
- 
-</style>
-
-
-
-</head>
-<body onload="init()">
-<div id="container">
-    <div id="canvas-holder">
+      .texture-group label {
+        width: auto;
+      }
+      
+      /* Стилі для радіо-кнопок осей */
+      .axis-selector {
+          display: flex;
+          gap: 10px;
+          margin-bottom: 5px;
+      }
+      .axis-selector label {
+          width: auto;
+          font-weight: normal;
+      }
+    </style>
+  </head>
+  <body onload="init()">
+    <div id="container">
+      <div id="canvas-holder">
         <canvas id="webglcanvas"></canvas>
-    </div>
-    <div id="controls">
+      </div>
+      <div id="controls">
         <h2>Monge Surface</h2>
 
         <div>
-            <label>r (m):</label>
-            <input type="number" id="rVal" value="1" step="0.1">
+          <label>r (m):</label>
+          <input type="number" id="rVal" value="1" step="0.1" />
         </div>
 
         <div>
-            <label>c (m):</label>
-            <input type="number" id="cVal" value="1" step="0.1">
+          <label>c (m):</label>
+          <input type="number" id="cVal" value="1" step="0.1" />
         </div>
 
         <div>
-            <label>d:</label>
-            <input type="number" id="dVal" value="1" step="0.1">
+          <label>d:</label>
+          <input type="number" id="dVal" value="1" step="0.1" />
         </div>
 
         <div>
-            <label>θ₀ (π):</label>
-            <input type="number" id="theta0Val" value="1.57" step="0.1">
+          <label>θ₀ (π):</label>
+          <input type="number" id="theta0Val" value="1.57" step="0.1" />
         </div>
 
         <div>
-            <label for="uMaxRange">uMax:</label>
-            <input type="range" id="uMaxRange" min="1" max="5" step="0.1" value="2.5" oninput="updateUmax(this.value)">
-            <span id="uMaxValue">2.5π</span>
+          <label for="uMaxRange">uMax:</label>
+          <input
+            type="range"
+            id="uMaxRange"
+            min="1"
+            max="5"
+            step="0.1"
+            value="2.5"
+            oninput="updateUmax(this.value)"
+          />
+          <span id="uMaxValue">2.5π</span>
         </div>
 
         <div>
-            <label for="uSlider">U Steps:</label>
-            <input type="range" id="uSlider" min="3" max="150" value="100" oninput="updateUSteps(this.value)">
-            <span id="uSliderValue">100</span>
+          <label for="uSlider">U Steps:</label>
+          <input
+            type="range"
+            id="uSlider"
+            min="3"
+            max="150"
+            value="100"
+            oninput="updateUSteps(this.value)"
+          />
+          <span id="uSliderValue">100</span>
         </div>
 
         <div>
-            <label for="vSlider">V Steps:</label>
-            <input type="range" id="vSlider" min="3" max="100" value="20" oninput="updateVSteps(this.value)">
-            <span id="vSliderValue">20</span>
+          <label for="vSlider">V Steps:</label>
+          <input
+            type="range"
+            id="vSlider"
+            min="3"
+            max="100"
+            value="20"
+            oninput="updateVSteps(this.value)"
+          />
+          <span id="vSliderValue">20</span>
         </div>
         <div>
-            <label>Mode:</label>
-            <div style="display: inline-block; margin-left: 10px;">
-                <input type="radio" id="modeFill" name="renderMode" value="fill" checked onchange="setRenderMode(this.value)">
-                <label for="modeFill">Fill</label>
-                <input type="radio" id="modeWire" name="renderMode" value="wireframe" onchange="setRenderMode(this.value)">
-                <label for="modeWire">Wireframe</label>
-            </div>
+          <label>Mode:</label>
+          <div style="display: inline-block; margin-left: 10px">
+            <input
+              type="radio"
+              id="modeFill"
+              name="renderMode"
+              value="fill"
+              checked
+              onchange="setRenderMode(this.value)"
+            />
+            <label for="modeFill">Fill</label>
+            <input
+              type="radio"
+              id="modeWire"
+              name="renderMode"
+              value="wireframe"
+              onchange="setRenderMode(this.value)"
+            />
+            <label for="modeWire">Wireframe</label>
+          </div>
         </div>
-        <div>
-    <label >Texture:</label>
-    <div class="texture-group">
-        
-        <label>
-            <input type="checkbox" id="useDiffuseMap" checked onchange="updateRenderSettings()">
+
+        <label>Texture:</label>
+        <div class="texture-group">
+          <label>
+            <input
+              type="checkbox"
+              id="useDiffuseMap"
+              checked
+              onchange="updateRenderSettings()"
+            />
             Use Diffuse Map
-        </label>
+          </label>
 
-        <label>
-            <input type="checkbox" id="useSpecularMap" checked onchange="updateRenderSettings()">
+          <label>
+            <input
+              type="checkbox"
+              id="useSpecularMap"
+              checked
+              onchange="updateRenderSettings()"
+            />
             Use Specular Map
-        </label>
+          </label>
 
-        <label>
-            <input type="checkbox" id="useNormalMap" checked onchange="updateRenderSettings()">
+          <label>
+            <input
+              type="checkbox"
+              id="useNormalMap"
+              checked
+              onchange="updateRenderSettings()"
+            />
             Use Normal Map
-        </label>
-    </div>
-</div>
+          </label>
+        </div>
+
+        <hr style="width: 100%; border: 0; border-top: 1px solid #ccc;">
+        
+        <h3 style="margin: 5px 0;">Transformation Mode</h3>
+        
+        <div style="margin-bottom: 10px;">
+            <label style="width: auto; margin-right: 15px;">
+                <input type="radio" name="controlMode" value="mesh" checked onchange="setControlMode(this.value)">
+                Rotate Figure
+            </label>
+            <label style="width: auto;">
+                <input type="radio" name="controlMode" value="texture" onchange="setControlMode(this.value)">
+                Rotate Texture
+            </label>
+        </div>
+
+        <div id="meshControls">
+            <label>Mesh Axis:</label>
+            <div class="axis-selector">
+                <label><input type="radio" name="meshAxis" value="x" onchange="setRotationAxis('x')"> X</label>
+                <label><input type="radio" name="meshAxis" value="y" onchange="setRotationAxis('y')"> Y</label>
+                <label><input type="radio" name="meshAxis" value="z" checked onchange="setRotationAxis('z')"> Z</label>
+            </div>
+            <label>Angle:</label>
+            <input type="range" id="meshAngle" min="0" max="6.28" step="0.01" value="0" oninput="updateRotations()">
+            <br>
+            <label style="color: #2f3ad3; font-weight: bold;">Pivot Point (UV):</label>
+            <br>
+            <span id="meshCenterDisp">U: 1.00, V: 0.00</span>
+        </div>
+
+        <div id="texControls" style="opacity: 0.5;">
+            <label>Tex Angle (Z):</label>
+            <input type="range" id="texAngle" min="0" max="6.28" step="0.01" value="0" oninput="updateRotations()">
+            <br>
+            <label style="color: #2e7d32; font-weight: bold;">Center (UV):</label>
+            <span id="texCenterDisp">0.50, 0.50</span>
+        </div>
+
+        <div style="font-size: 0.8em; color: #666; margin-top: 10px; font-weight: bold;">
+            Use WASD to move Center Point for SELECTED mode!
+        </div>
+        <hr style="width: 100%; border: 0; border-top: 1px solid #ccc;">
+          
 
         <button onclick="updateSurface()">Update Surface</button>
+      </div>
     </div>
 
-
-<script src="./Utils/trackball-rotator.js"></script>
-<script src="./Utils/m4.js"></script>
-<script src="./shader.gpu"></script>
-<script src="./main.js"></script>
-</body>
+    <script src="./Utils/trackball-rotator.js"></script>
+    <script src="./Utils/m4.js"></script>
+    <script src="./shader.gpu"></script>
+    <script src="./main.js"></script>
+  </body>
 </html>
